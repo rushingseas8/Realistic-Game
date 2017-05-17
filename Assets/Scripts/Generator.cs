@@ -4,65 +4,224 @@ using UnityEngine;
 using UnityEngine.Profiling;
 
 public class Generator : MonoBehaviour {
-	/**
-	 * @param densityValue: Expects an integer greater than or equal to one. Accepts floats below 1, but 
-	 * 	you're on your own for those. Notably, 0.5f seems to work well.
-	 */
-	public static Mesh generateTerrain(int width, int length, float densityValue, float xOffset, float yOffset, float heightScale, float heightOffset, float sizeScale, float[] heightMap) {
-		float density = (float)densityValue;
 
-		//Used to save (a lot) of calculations
-		int wd = (int)(width * density);
-		int wd1 = (int)(width * density) + 1;
-		int ld1 = (int)(length * density) + 1;
+	public static Mesh[,] meshGrid;
 
-		//float[] heightMap = createHeightMap (wd1, ld1, xOffset, yOffset);
+	public static int meshDimension = 4;
 
-		int[] iwd1 = new int[wd1];
+	public static float sizeScale = 128f; //16f
+	public static float heightScale = 100f;
+
+	public static int renderDiameter = 41;
+	public static int renderRadius = renderDiameter / 2;
+
+	//public static float[] boundaries = new float[]{ 0f, 0.1f, 0.3f, 0.5f };
+	//public static float transitionSize = 0.1f;
+
+	public static void generateLand(float xStart, float yStart) {
+		//TODO: Have multiple materials/textures and blend between them
+		Material material = Resources.Load ("Materials/Grass", typeof(Material)) as Material;
+
+		PhysicMaterial pmat = new PhysicMaterial ();
+		pmat.bounciness = 0f;
+		pmat.dynamicFriction = 0.4f;
+		pmat.staticFriction = 0.7f;
+
+		for (int j = -renderRadius; j <= renderRadius; j++) {
+			for (int i = -renderRadius; i <= renderRadius; i++) {
+				Mesh mesh = Generator.generateTerrain(xStart + i, yStart + j);
+				Vector3 position = new Vector3(i * meshDimension - (meshDimension / 2), 0, j * meshDimension - (meshDimension / 2));
+				Generator.createTerrainObject (mesh, position, material, pmat);
+			}
+		}
+	}
+
+	public static Mesh generateTerrain(float worldX, float worldY) {
+		//Debug.Log ("Generating terrain for " + worldX + ", " + worldY);
+
+		int width = meshDimension;
+		int length = meshDimension;
+
+		//Generating terrain does so on a 1x1 tile. The mesh is 128 meters wide (by default)- this fixes that scale.
+		//This also allows meshDimension and sizeScale to be two independent variables.
+		float adjustedScale = sizeScale * (meshDimension / 128.0f) / 128.0f;
+
+		int w1 = width + 1;
+		int l1 = length + 1;
+
+		//Generate a heightmap based on 2 passes of Perlin noise. This makes oceans and continents.
+		float[] heightMap = createHeightMap (width, length, worldX, worldY, adjustedScale);
+
+		//Generate a perlin noise map for the actual land itself. 
+		float heightOffset = -0.5f * heightScale;
+		float[] perlinMap = new float[w1 * l1];
+		for (int i = 0; i < w1; i++) {
+			for (int j = 0; j < l1; j++) {
+				perlinMap [(i * w1) + j] = heightOffset + getHeightForCoordinate (worldX, worldY, i, j);
+				//float perlin = -0.5f + perlinOctaves (6, 0.5f, adjustedScale, worldX + ((float)j / length), worldY + ((float)i / width));
+				//float height = heightMap[(i * w1) + j];
+				//float val = perlin + height;
+
+				//TODO: Automate the addition of ranges, add a variable for the transitions, and have it 
+				//automatically deal with calculating the appropriate interpolation bounds.
+
+				//float transitionSize = 0.05f;
+
+				//perlinMap [(i * w1) + j] = 100 * perlin;
+
+				/*
+				if (val < -0.2f) {
+					perlinMap [(i * w1) + j] = 150 * (val - (0.8f * perlin));
+				} else if (val >= -0.2f && height < -0.1f) {
+					//perlinMap [(i * w1) + j] = 70 * val;
+				} else if (val > -0.1f && height < 0.1f - transitionSize) {
+					perlinMap [(i * w1) + j] = 10 * val;
+				} else if (val >= 0.1f - transitionSize && val < 0.1 + transitionSize) {
+					//Interpolate
+					float[] interp = Helper.interpolate (-0.05f, 0.05f, 0.15f, 10 * -0.05f, 10 * 0.05f, 40 * (0.15f - 0.1f));
+					perlinMap [(i * w1) + j] = (interp [2] * val * val) + (interp [1] * val) + interp [0];
+				} else if (val >= 0.1f + transitionSize && val < 0.3f - transitionSize) {
+					perlinMap [(i * w1) + j] = 40 * (val - 0.1f);
+					//perlinMap [(i * w1) + j] = (100 * (height - 0.1f)) + (0 * (perlin - 0.1f));
+				} else if (val >= 0.3f - transitionSize && val < 0.3f + transitionSize) {
+					//Interpolate. The last two points are the transition range; the first is back a distance equal to the transition distance.
+					//Pass in: x1 - (x2 - x1), x1, x2, f1(x1), f1(x2), f2(x3)
+					float[] interp = Helper.interpolate (0.15f, 0.25f, 0.35f, 40 * (0.15f - 0.1f), 40 * (0.25f - 0.1f), 300 * (0.35f - 0.3f));
+					perlinMap [(i * w1) + j] = (interp [2] * val * val) + (interp [1] * val) + interp [0];
+				} else if (val >= 0.3f + transitionSize) {
+					perlinMap [(i * w1) + j] = 300 * (val - 0.3f);
+				} else {
+					Debug.Log ("Found value that didn't meet cases: " + val);
+				}
+				*/
+
+				//-0.2f-: Abyss
+				//-0.2f to -0.1f: Shelf
+				//-0.1f to 0.1f: Coast
+				//0.1f to 0.3f: Hill
+				//0.3f+: Mountain
+
+				/*
+				float abyssScale = 150f;
+				float shelfStart = -0.2f;
+				float shelfScale = 70f;
+				float coastStart = -0.1f;
+				float coastScale = 10f;
+				float hillStart = 0.1f;
+				float hillScale = 400f;
+				float mountainStart = 0.3f;
+				float mountainScale = 3000f;
+
+				if (perlin < shelfStart - transitionSize) { //Abyss
+					perlinMap [(i * w1) + j] = abyssScale * (perlin );
+				} else if (perlin >= shelfStart - transitionSize && perlin < shelfStart + transitionSize) { //Abyss-shelf transition
+
+					//perlinMap [(i * w1) + j] = abyssScale * (perlin);
+					float x1 = shelfStart - transitionSize;
+					float x2 = shelfStart + transitionSize;
+					float x0 = x1 - (x2 - x1);
+
+					float[] interp = Helper.interpolate (x0, x1, x2,
+						shelfScale * (x0 + 0.3f),
+						shelfScale * (x1 + 0.3f),
+						abyssScale * (x2 - shelfStart));
+					
+				} else if (perlin >= shelfStart + transitionSize && perlin < coastStart - transitionSize) { //Shelf
+					perlinMap [(i * w1) + j] = shelfScale * (perlin );
+				} else if (perlin >= coastStart - transitionSize && perlin < coastStart + transitionSize) { //Shelf-coast transition
+
+					perlinMap [(i * w1) + j] = shelfScale * (perlin );
+
+					float x1 = coastStart - transitionSize;
+					float x2 = coastStart + transitionSize;
+					float x0 = x1 - (x2 - x1);
+
+					float[] interp = Helper.interpolate (x0, x1, x2,
+						shelfScale * (x0 - shelfStart),
+						shelfScale * (x1 - shelfStart),
+						coastScale * (x2 - coastStart));
+
+				} else if (perlin >= coastStart + transitionSize && perlin < hillStart - transitionSize) { //Coast
+					perlinMap [(i * w1) + j] = coastScale * (perlin );
+				} else if (perlin >= hillStart - transitionSize && perlin < hillStart + transitionSize) { //Coast-hill transition
+
+					float x1 = hillStart - transitionSize;
+					float x2 = hillStart + transitionSize;
+					float x0 = x1 - (x2 - x1);
+
+					float[] interp = Helper.interpolate (x0, x1, x2,
+						coastScale * (x0 - coastStart),
+						coastScale * (x1 - coastStart),
+						hillScale * (x2 - hillStart));
+					//float[] interp = Helper.interpolate (-0.05f, 0.05f, 0.15f, 10 * -0.05f, 10 * 0.05f, 40 * (0.15f - 0.1f));
+					perlinMap [(i * w1) + j] = (interp [2] * perlin * perlin) + (interp [1] * perlin) + interp [0];
+				} else if (perlin >= hillStart + transitionSize && perlin < mountainStart - transitionSize) { //Hill
+					perlinMap [(i * w1) + j] = hillScale * (perlin );
+				} else if (perlin >= mountainStart - transitionSize && perlin < mountainStart + transitionSize) { //Hill-mountain transition
+					
+					float x1 = mountainStart - transitionSize;
+					float x2 = mountainStart + transitionSize;
+					float x0 = x1 - (x2 - x1);
+
+
+					float[] interp = Helper.interpolate (x0, x1, x2,
+						hillScale * (x0 - hillStart),
+						hillScale * (x1 - hillStart),
+						mountainScale * (x2 - mountainStart));
+					perlinMap [(i * w1) + j] = (interp [2] * perlin * perlin) + (interp [1] * perlin) + interp [0];
+
+					//float[] interp = Helper.interpolate (0.15f, 0.25f, 0.35f, 40 * (0.15f - 0.1f), 40 * (0.25f - 0.1f), 300 * (0.35f - 0.3f));
+					//perlinMap [(i * w1) + j] = (interp [2] * perlin * perlin) + (interp [1] * perlin) + interp [0];
+				} else if (perlin >= mountainStart + transitionSize) { //Mountain
+					perlinMap [(i * w1) + j] = mountainScale * (perlin );
+					//perlinMap [(i * w1) + j] = (300 * perlin) + (300 * height) - (0.3f * 300);
+					//perlinMap [(i * w1) + j] = (-150 * height) + (10 * perlin);
+				}
+				*/
+
+				//(0.25, 0.04) -> (0.3231, 0.06923) -> (0.35, 0.15)
+			}
+		}
+
+		//TODO: apply a smooth/boost function to make the perlin map terrain more diverse.
+		//Specifically, 0-0.35 gets flattened, 0.35-0.6 gets a smooth slope, 0.6-0.8 is hilly, and 0.8-1.0 is mountainous.
+
+		int[] iw1 = new int[w1];
 
 		//Vertex generation
 		Profiler.BeginSample("Vertex generation");
-		Vector3[] vertices = new Vector3[wd1 * ld1];
-		//Debug.Log ("Vertices size: " + (wd1 * ld1));
-		for (int i = 0; i < wd1; i++) {
-			iwd1[i] = i * wd1;
-			for (int j = 0; j < ld1; j++) {
-				//Debug.Log ("i,j:" + i + "," + j + " index used: " + (iwd1 [i] + j));
-				vertices [iwd1[i] + j] = new Vector3 (
-					j / density, 
-					//(heightScale * Mathf.PerlinNoise(
-					//	xOffset + (sizeScale * j / density / length), yOffset + (sizeScale * i / density / width))) + heightOffset,
-					//(heightScale * landGenFunction(xOffset + (sizeScale * j / density / length), yOffset + (sizeScale * i / density / width))) + heightOffset,
-					(heightScale * landGenFunction(j / density / length, i / density / width, xOffset, yOffset, 1 / sizeScale)) + (heightMap[iwd1[i] + j] * heightScale),
-					//heightMap[iwd1[i] + j] * heightScale,
-					i / density);
+		Vector3[] vertices = new Vector3[w1 * l1];
+		for (int i = 0; i < w1; i++) {
+			iw1[i] = i * w1;
+			for (int j = 0; j < l1; j++) {
+				vertices [iw1[i] + j] = new Vector3 (j, perlinMap[(i * w1) + j], i);
 			}
 		}
 		Profiler.EndSample();
-			
+
 		//UV mapping generation
 		Profiler.BeginSample("UV generation");
-		Vector2[] uvs = new Vector2[wd1 * ld1];
-		for (int i = 0; i < wd1; i++) {
-			for (int j = 0; j < ld1; j++) {
-				uvs [iwd1[i] + j] = new Vector2 (j / density, i / density);
+		Vector2[] uvs = new Vector2[w1 * l1];
+		for (int i = 0; i < w1; i++) {
+			for (int j = 0; j < l1; j++) {
+				uvs [iw1[i] + j] = new Vector2 (j, i);
 			}
 		}
 		Profiler.EndSample();
 
 		//Triangle generation
 		Profiler.BeginSample("Triangle generation");
-		int[] triangles = new int[(int)(6 * width * length * density * density)];
-		for (int i = 0; i < wd; i++) {
+		int[] triangles = new int[(int)(6 * width * length)];
+		for (int i = 0; i < width; i++) {
 			int i1 = i + 1;
-			int i1wd1 = i1 * wd1;
+			int i1wd1 = i1 * w1;
 
-			int iwd = i * wd;
+			int iwd = i * width;
 
-			for (int j = 0; j < length * density; j++) {
+			for (int j = 0; j < length; j++) {
 				int baseIndex = 6 * (iwd + j);
 
-				int iwd1j = iwd1[i] + j;
+				int iwd1j = iw1[i] + j;
 				int i1wd1j = i1wd1 + j;
 
 				triangles [baseIndex + 0] = iwd1j;
@@ -75,55 +234,187 @@ public class Generator : MonoBehaviour {
 		}
 		Profiler.EndSample ();
 
-		/*
-		Debug.Log ("Vertices");
-		for (int i = 0; i < vertices.Length; i++) {
-			Debug.Log (vertices [i]);
-		}
-			
-		Debug.Log ("UVs");
-		for (int i = 0; i < uvs.Length; i++) {
-			Debug.Log (vertices [i]);
-		}
+		Mesh mesh = new Mesh ();
 
-		Debug.Log ("Triangles");
-		for (int i = 0; i < triangles.Length; i++) {
-			Debug.Log (triangles [i]);
+		mesh.vertices = vertices;
+		mesh.triangles = triangles;
+		mesh.uv = uvs;
+
+		mesh.RecalculateNormals ();
+		//Manually calculate normals to get rid of seams
+		/*
+		Vector3[] normals = new Vector3[w1 * l1];
+		for (int i = 0; i < w1; i++) {
+			for (int j = 0; j < l1; j++) {
+				//Get the derivative in the x axis
+				float left = -1, right = -1;
+				if (j == 0) {
+					left = getHeightForCoordinate(worldX, worldY, i, j - 1);
+					right = vertices [iw1 [i] + j + 1].y;
+				} else if (j == length) {
+					left = vertices [iw1 [i] + j - 1].y;
+					right = getHeightForCoordinate(worldX, worldY, i, j + 1);
+				} else {
+					left = vertices [iw1 [i] + j - 1].y;
+					right = vertices [iw1 [i] + j + 1].y;
+				}
+
+				float xDer = (right - left) * 0.5f;
+
+				//Get the derivative in the z axis
+				float back = -1, front = -1;
+				if (i == 0) {
+					back = getHeightForCoordinate(worldX, worldY, i - 1, j);
+					front = vertices [iw1 [i + 1] + j].y;
+				} else if (i == width) {
+					back = vertices [iw1 [i - 1] + j].y;
+					front = getHeightForCoordinate(worldX, worldY, i + 1, j);
+				} else {
+					back = vertices [iw1 [i - 1] + j].y;
+					front = vertices [iw1 [i + 1] + j].y;
+				}
+
+				float zDer = (front - back) * 0.5f;
+
+				normals [iw1 [i] + j] = new Vector3(-xDer, 1f, -zDer).normalized;
+			}
 		}
+		mesh.normals = normals;
 		*/
 
-		return createMesh (vertices, uvs, triangles);
+		return mesh;
 	}
 
-	private static float landGenFunction(float x, float y, float xOffset, float yOffset, float sizeScale) {
-		//Debug.Log ("Land gen for " + x + ", " + y + ". Offset = " + xOffset + ", " + yOffset);
+	//Simulates the terrain generation for a specific point. Used in calculating normals in neighbors.
+	public static float getHeightForCoordinate(float worldX, float worldY, int i, int j) {
+		float adjustedScale = sizeScale * (meshDimension / 128.0f) / 128.0f;
+
+		float perlin = perlinOctaves (6, 0.5f, adjustedScale, worldX + ((float)j / meshDimension), worldY + ((float)i / meshDimension));
+		//float height = getHeightMapForCoordinate (worldX, worldY, i, j, adjustedScale);
+
+		//float val = perlin + height;
+
+		//float transitionSize = 0.05f;
+
+		return heightScale * perlin;
 
 		/*
-		int levels = 6;
-		float freq = sizeScale;
-		float amp = 1;
-		float value = 0;
-		float persistence = 0.5f;
-		for (int k = 0; k < levels; k++) {
-			value += amp * Mathf.PerlinNoise ((xOffset + x) * freq, (yOffset + y) * freq);
-			amp *= persistence;
-			freq *= 2;
+		if (val < -0.2f) {
+			return 150 * (val - (0.8f * perlin));
+		} else if (val >= -0.2f && height < -0.1f) {
+			return 70 * val;
+		} else if (val > -0.1f && height < 0.1f - transitionSize) {
+			return 10 * val;
+		} else if (val >= 0.1f - transitionSize && val < 0.1 + transitionSize) {
+			//Interpolate
+			float[] interp = Helper.interpolate (-0.05f, 0.05f, 0.15f, 10 * -0.05f, 10 * 0.05f, 40 * (0.15f - 0.1f));
+			return (interp [2] * val * val) + (interp [1] * val) + interp [0];
+		} else if (val >= 0.1f + transitionSize && val < 0.3f - transitionSize) {
+			return 40 * (val - 0.1f);
+		} else if (val >= 0.3f - transitionSize && val < 0.3f + transitionSize) {
+			//Interpolate. The last two points are the transition range; the first is back a distance equal to the transition distance.
+			//Pass in: x1 - (x2 - x1), x1, x2, f1(x1), f1(x2), f2(x3)
+			float[] interp = Helper.interpolate (0.15f, 0.25f, 0.35f, 40 * (0.15f - 0.1f), 40 * (0.25f - 0.1f), 300 * (0.35f - 0.3f));
+			return (interp [2] * val * val) + (interp [1] * val) + interp [0];
+		} else if (val >= 0.3f + transitionSize) {
+			return 300 * (val - 0.3f);
+		} else {
+			Debug.Log ("Found value that didn't meet cases: " + val);
+			return -1;
 		}
-		return value * (1 - persistence);
 		*/
-		return perlinOctaves (6, 0.5f, sizeScale, (xOffset + x), (yOffset + y));
 	}
 
-	//private static float[] precalculated = new float[] { -0.00816257, -0.01035374, -0.01312532, -0.01662636, -0.02104134, -0.02659699, -0.03356922, -0.04228976, -0.05315113, -0.06660803, -0.08317269, -0.1034004, -0.1278616, -0.1570954, -0.1915453, -0.2314752, -0.2768781, -0.327393, -0.3822521, -0.4402863, -0.4999999, -0.5597136, -0.6177478, -0.6726069, -0.7231218, -0.7685248, -0.8084546, -0.8429044, -0.8721384, -0.8965995, -0.9168273, -0.9333919, -0.9468489, -0.9577102, -0.9664308, -0.973403, -0.9789587, -0.9833736, -0.9868747, -0.9896463, -0.9918374, -0.9935679, -0.9949334, -0.9960101, -0.9968588, -0.9975274, -0.9980539, -0.9984685, -0.9987949, -0.9990518};
-	private static float[] precalculated = new float[] { -0.00816257f, -0.01035374f, -0.01312532f, -0.01662636f, -0.02104134f, -0.02659699f, -0.03356922f, -0.04228976f, -0.05315113f, -0.06660803f, -0.08317269f, -0.1034004f, -0.1278616f, -0.1570954f, -0.1915453f, -0.2314752f, -0.2768781f, -0.327393f, -0.3822521f, -0.4402863f, -0.4999999f, -0.5597136f, -0.6177478f, -0.6726069f, -0.7231218f, -0.7685248f, -0.8084546f, -0.8429044f, -0.8721384f, -0.8965995f, -0.9168273f, -0.9333919f, -0.9468489f, -0.9577102f, -0.9664308f, -0.973403f, -0.9789587f, -0.9833736f, -0.9868747f, -0.9896463f, -0.9918374f, -0.9935679f, -0.9949334f, -0.9960101f, -0.9968588f, -0.9975274f, -0.9980539f, -0.9984685f, -0.9987949f, -0.9990518f};
+	public static IEnumerator generateTerrainBackground(float worldX, float worldY, GameObject unfinishedObject) {
+		int width = meshDimension;
+		int length = meshDimension;
 
-	public static float[] createHeightMap(int width, int length, float xOffset, float yOffset) {
+		//Generating terrain does so on a 1x1 tile. The mesh is 128 meters wide (by default)- this fixes that scale.
+		//This also allows meshDimension and sizeScale to be two independent variables.
+		float adjustedScale = sizeScale * (meshDimension / 128.0f) / 128.0f;
+
+		int w1 = width + 1;
+		int l1 = length + 1;
+
+		//Generate a heightmap based on 2 passes of Perlin noise. This makes oceans and continents.
+		float[] heightMap = createHeightMap (width, length, worldX, worldY, adjustedScale);
+
+		//Generate a perlin noise map for the actual land itself. 
+		float[] perlinMap = new float[w1 * l1];
+		for (int i = 0; i < w1; i++) {
+			for (int j = 0; j < l1; j++) {
+				perlinMap [(i * w1) + j] = 
+					heightScale * (perlinOctaves (6, 0.5f, adjustedScale, worldX + ((float)j / length), worldY + ((float)i / width)) + heightMap[(i * w1) + j]);
+			}
+		}
+		yield return null;
+
+		//TODO: apply a smooth/boost function to make the perlin map terrain more diverse.
+		//Specifically, 0-0.35 gets flattened, 0.35-0.6 gets a smooth slope, 0.6-0.8 is hilly, and 0.8-1.0 is mountainous.
+
+		int[] iw1 = new int[w1];
+
+		//Vertex generation
+		Vector3[] vertices = new Vector3[w1 * l1];
+		for (int i = 0; i < w1; i++) {
+			iw1[i] = i * w1;
+			for (int j = 0; j < l1; j++) {
+				vertices [iw1[i] + j] = new Vector3 (j, perlinMap[(i * w1) + j], i);
+			}
+		}
+		yield return null;
+
+		//UV mapping generation
+		Vector2[] uvs = new Vector2[w1 * l1];
+		for (int i = 0; i < w1; i++) {
+			for (int j = 0; j < l1; j++) {
+				uvs [iw1[i] + j] = new Vector2 (j, i);
+			}
+		}
+		yield return null;
+
+		//Triangle generation
+		int[] triangles = new int[(int)(6 * width * length)];
+		for (int i = 0; i < width; i++) {
+			int i1 = i + 1;
+			int i1wd1 = i1 * w1;
+
+			int iwd = i * width;
+
+			for (int j = 0; j < length; j++) {
+				int baseIndex = 6 * (iwd + j);
+
+				int iwd1j = iw1[i] + j;
+				int i1wd1j = i1wd1 + j;
+
+				triangles [baseIndex + 0] = iwd1j;
+				triangles [baseIndex + 1] = i1wd1j + 1;
+				triangles [baseIndex + 2] = iwd1j + 1;
+				triangles [baseIndex + 3] = iwd1j;
+				triangles [baseIndex + 4] = i1wd1j;
+				triangles [baseIndex + 5] = i1wd1j + 1;
+			}
+		}
+		yield return null;
+
+		Mesh newMesh = createMesh (vertices, uvs, triangles);
+		unfinishedObject.GetComponent<MeshFilter> ().mesh = newMesh;
+
+		yield return null;
+
+		unfinishedObject.GetComponent<MeshCollider>().sharedMesh = newMesh;
+	}
+
+	public static float[] createHeightMap(int width, int length, float worldX, float worldY, float scaleMod) {
+		int w1 = width + 1;
+		int l1 = length + 1;
+
 		/**
 		 * The scale for the perlin noise used to determine the heightmap. Determines the size of 
 		 * the continents formed. Low values = bigger continents; high values = smaller islands.
 		 * Default: 0.777. 
 		 */
-		float scale = 0.777f;
+		float scale = scaleMod * 0.777f;
 
 		/**
 		 * The algorithm uses a sigmoid function to separate land and water.
@@ -142,44 +433,42 @@ public class Generator : MonoBehaviour {
 		 */
 		float targetLandCoverage = 0.4f;
 
-		float[] toReturn = new float[width * length];
-		for (int i = 0; i < width; i++) {
+		float[] toReturn = new float[w1 * l1];
+		for (int i = 0; i < w1; i++) {
 			float y = (float)i / length;
-			for (int j = 0; j < length; j++) {
+			for (int j = 0; j < l1; j++) {
 				float x = (float)j / width;
 
-				float val = perlinOctaves(2, 0.6f, scale, (xOffset + x), (yOffset + y));
-				/*
-				if (val < 0.3f) {
-					toReturn [(i * width) + j] = 0;
-				} else if (val > 0.7f) {
-					toReturn [(i * width) + j] = -1;
-				} else {
-					val = val - 0.3f;
-					val = Mathf.Pow (val, 0.5f);
-					val = val * 1.58f;
-					toReturn [(i * width) + j] = -val;
-				}*/
+				//2 passes of perlin noise
+				float val = perlinOctaves(2, 0.6f, scale, (worldX + x), (worldY + y));
 
-				//if (val > 0.4f && val < 0.6f) {
-				//	count++;
-				//}
+				//Smooth/boost sigmoid function (makes border between ocean + land more clear)
+				val = -1.0f / (1 + (Mathf.Exp (landDropoff * (val - targetLandCoverage))));
+				//val = (2.0f / (1 + (Mathf.Exp (landDropoff * (val - targetLandCoverage))))) - 1.0f;
 
-
-				//val = -1.0f / (1 + (Mathf.Exp (landDropoff * (val - targetLandCoverage))));
-				if(val < 0) 
-					val = 0;
-				if (val > 1)
-					val = 1;
-				
-
-				//toReturn [(i * width) + j] = val;
-				toReturn [(i * width) + j] = precalculated[(int)Mathf.Floor(val * 50.0f)];
+				toReturn [(i * w1) + j] = val;
 			}
 		}
 		return toReturn;
 	}
 
+	public static float getHeightMapForCoordinate(float worldX, float worldY, int i, int j, float scaleMod) {
+		float scale = scaleMod * 0.777f;
+		float y = (float)i / meshDimension;
+		float x = (float)j / meshDimension;
+		float perlin = perlinOctaves(2, 0.6f, scale, (worldX + x), (worldY + y));
+		float landDropoff = -12f;
+		float targetLandCoverage = 0.4f;
+
+		return -1.0f / (1 + (Mathf.Exp (landDropoff * (perlin - targetLandCoverage))));
+	}
+
+	/**
+	 * Generates "levels" amount of perlin noise. This is normalized to be between 0-1.
+	 * @param levels: How many iterations to run. Higher = more bumpy terrain, lower = smoother.
+	 * @param persistence: How much impact each level has. 0.5 is default; higher = more random, lower = more uniform.
+	 * @param scale: How "zoomed in" is this noise? Higher = more dense spikes, lower = more spread out hills.
+	 */
 	private static float perlinOctaves(int levels, float persistence, float scale, float x, float y) {
 		float amp = 1;
 		float value = 0;
@@ -209,6 +498,17 @@ public class Generator : MonoBehaviour {
 
 		obj.transform.position = position;
 		return obj;
+	}
+
+	public static GameObject createTerrainObject(Mesh mesh, Vector3 position) {				
+		Material material = Resources.Load ("Materials/Grass", typeof(Material)) as Material;
+
+		PhysicMaterial pmat = new PhysicMaterial ();
+		pmat.bounciness = 0f;
+		pmat.dynamicFriction = 0.4f;
+		pmat.staticFriction = 0.7f;
+
+		return createTerrainObject (mesh, position, material, pmat);
 	}
 
 	public static Mesh createMesh(Vector3[] vertices, Vector2[] uvs, int[] triangles) {
