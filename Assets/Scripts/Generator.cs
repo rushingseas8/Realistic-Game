@@ -7,12 +7,12 @@ public class Generator : MonoBehaviour {
 
 	public static Mesh[,] meshGrid;
 
-	public static int meshDimension = 4;
+	public static int meshDimension = 32;
 
-	public static float sizeScale = 128f; //16f
+	public static float sizeScale = 128f;
 	public static float heightScale = 100f;
 
-	public static int renderDiameter = 41;
+	public static int renderDiameter = 5;
 	public static int renderRadius = renderDiameter / 2;
 
 	//public static float[] boundaries = new float[]{ 0f, 0.1f, 0.3f, 0.5f };
@@ -20,7 +20,8 @@ public class Generator : MonoBehaviour {
 
 	public static void generateLand(float xStart, float yStart) {
 		//TODO: Have multiple materials/textures and blend between them
-		Material material = Resources.Load ("Materials/Grass", typeof(Material)) as Material;
+		Material material = Resources.Load ("Materials/Grass-Small", typeof(Material)) as Material;
+		material.color = new Color(1.0f, 0.855f, 0.725f);
 
 		PhysicMaterial pmat = new PhysicMaterial ();
 		pmat.bounciness = 0f;
@@ -44,147 +45,21 @@ public class Generator : MonoBehaviour {
 
 		//Generating terrain does so on a 1x1 tile. The mesh is 128 meters wide (by default)- this fixes that scale.
 		//This also allows meshDimension and sizeScale to be two independent variables.
-		float adjustedScale = sizeScale * (meshDimension / 128.0f) / 128.0f;
+		//float adjustedScale = sizeScale * (meshDimension / 128.0f) / 128.0f;
 
 		int w1 = width + 1;
 		int l1 = length + 1;
 
 		//Generate a heightmap based on 2 passes of Perlin noise. This makes oceans and continents.
-		float[] heightMap = createHeightMap (width, length, worldX, worldY, adjustedScale);
+		//float[] heightMap = createHeightMap (width, length, worldX, worldY, adjustedScale);
 
 		//Generate a perlin noise map for the actual land itself. 
-		float heightOffset = -0.5f * heightScale;
 		float[] perlinMap = new float[w1 * l1];
 		for (int i = 0; i < w1; i++) {
 			for (int j = 0; j < l1; j++) {
-				perlinMap [(i * w1) + j] = heightOffset + getHeightForCoordinate (worldX, worldY, i, j);
-				//float perlin = -0.5f + perlinOctaves (6, 0.5f, adjustedScale, worldX + ((float)j / length), worldY + ((float)i / width));
-				//float height = heightMap[(i * w1) + j];
-				//float val = perlin + height;
-
-				//TODO: Automate the addition of ranges, add a variable for the transitions, and have it 
-				//automatically deal with calculating the appropriate interpolation bounds.
-
-				//float transitionSize = 0.05f;
-
-				//perlinMap [(i * w1) + j] = 100 * perlin;
-
-				/*
-				if (val < -0.2f) {
-					perlinMap [(i * w1) + j] = 150 * (val - (0.8f * perlin));
-				} else if (val >= -0.2f && height < -0.1f) {
-					//perlinMap [(i * w1) + j] = 70 * val;
-				} else if (val > -0.1f && height < 0.1f - transitionSize) {
-					perlinMap [(i * w1) + j] = 10 * val;
-				} else if (val >= 0.1f - transitionSize && val < 0.1 + transitionSize) {
-					//Interpolate
-					float[] interp = Helper.interpolate (-0.05f, 0.05f, 0.15f, 10 * -0.05f, 10 * 0.05f, 40 * (0.15f - 0.1f));
-					perlinMap [(i * w1) + j] = (interp [2] * val * val) + (interp [1] * val) + interp [0];
-				} else if (val >= 0.1f + transitionSize && val < 0.3f - transitionSize) {
-					perlinMap [(i * w1) + j] = 40 * (val - 0.1f);
-					//perlinMap [(i * w1) + j] = (100 * (height - 0.1f)) + (0 * (perlin - 0.1f));
-				} else if (val >= 0.3f - transitionSize && val < 0.3f + transitionSize) {
-					//Interpolate. The last two points are the transition range; the first is back a distance equal to the transition distance.
-					//Pass in: x1 - (x2 - x1), x1, x2, f1(x1), f1(x2), f2(x3)
-					float[] interp = Helper.interpolate (0.15f, 0.25f, 0.35f, 40 * (0.15f - 0.1f), 40 * (0.25f - 0.1f), 300 * (0.35f - 0.3f));
-					perlinMap [(i * w1) + j] = (interp [2] * val * val) + (interp [1] * val) + interp [0];
-				} else if (val >= 0.3f + transitionSize) {
-					perlinMap [(i * w1) + j] = 300 * (val - 0.3f);
-				} else {
-					Debug.Log ("Found value that didn't meet cases: " + val);
-				}
-				*/
-
-				//-0.2f-: Abyss
-				//-0.2f to -0.1f: Shelf
-				//-0.1f to 0.1f: Coast
-				//0.1f to 0.3f: Hill
-				//0.3f+: Mountain
-
-				/*
-				float abyssScale = 150f;
-				float shelfStart = -0.2f;
-				float shelfScale = 70f;
-				float coastStart = -0.1f;
-				float coastScale = 10f;
-				float hillStart = 0.1f;
-				float hillScale = 400f;
-				float mountainStart = 0.3f;
-				float mountainScale = 3000f;
-
-				if (perlin < shelfStart - transitionSize) { //Abyss
-					perlinMap [(i * w1) + j] = abyssScale * (perlin );
-				} else if (perlin >= shelfStart - transitionSize && perlin < shelfStart + transitionSize) { //Abyss-shelf transition
-
-					//perlinMap [(i * w1) + j] = abyssScale * (perlin);
-					float x1 = shelfStart - transitionSize;
-					float x2 = shelfStart + transitionSize;
-					float x0 = x1 - (x2 - x1);
-
-					float[] interp = Helper.interpolate (x0, x1, x2,
-						shelfScale * (x0 + 0.3f),
-						shelfScale * (x1 + 0.3f),
-						abyssScale * (x2 - shelfStart));
-					
-				} else if (perlin >= shelfStart + transitionSize && perlin < coastStart - transitionSize) { //Shelf
-					perlinMap [(i * w1) + j] = shelfScale * (perlin );
-				} else if (perlin >= coastStart - transitionSize && perlin < coastStart + transitionSize) { //Shelf-coast transition
-
-					perlinMap [(i * w1) + j] = shelfScale * (perlin );
-
-					float x1 = coastStart - transitionSize;
-					float x2 = coastStart + transitionSize;
-					float x0 = x1 - (x2 - x1);
-
-					float[] interp = Helper.interpolate (x0, x1, x2,
-						shelfScale * (x0 - shelfStart),
-						shelfScale * (x1 - shelfStart),
-						coastScale * (x2 - coastStart));
-
-				} else if (perlin >= coastStart + transitionSize && perlin < hillStart - transitionSize) { //Coast
-					perlinMap [(i * w1) + j] = coastScale * (perlin );
-				} else if (perlin >= hillStart - transitionSize && perlin < hillStart + transitionSize) { //Coast-hill transition
-
-					float x1 = hillStart - transitionSize;
-					float x2 = hillStart + transitionSize;
-					float x0 = x1 - (x2 - x1);
-
-					float[] interp = Helper.interpolate (x0, x1, x2,
-						coastScale * (x0 - coastStart),
-						coastScale * (x1 - coastStart),
-						hillScale * (x2 - hillStart));
-					//float[] interp = Helper.interpolate (-0.05f, 0.05f, 0.15f, 10 * -0.05f, 10 * 0.05f, 40 * (0.15f - 0.1f));
-					perlinMap [(i * w1) + j] = (interp [2] * perlin * perlin) + (interp [1] * perlin) + interp [0];
-				} else if (perlin >= hillStart + transitionSize && perlin < mountainStart - transitionSize) { //Hill
-					perlinMap [(i * w1) + j] = hillScale * (perlin );
-				} else if (perlin >= mountainStart - transitionSize && perlin < mountainStart + transitionSize) { //Hill-mountain transition
-					
-					float x1 = mountainStart - transitionSize;
-					float x2 = mountainStart + transitionSize;
-					float x0 = x1 - (x2 - x1);
-
-
-					float[] interp = Helper.interpolate (x0, x1, x2,
-						hillScale * (x0 - hillStart),
-						hillScale * (x1 - hillStart),
-						mountainScale * (x2 - mountainStart));
-					perlinMap [(i * w1) + j] = (interp [2] * perlin * perlin) + (interp [1] * perlin) + interp [0];
-
-					//float[] interp = Helper.interpolate (0.15f, 0.25f, 0.35f, 40 * (0.15f - 0.1f), 40 * (0.25f - 0.1f), 300 * (0.35f - 0.3f));
-					//perlinMap [(i * w1) + j] = (interp [2] * perlin * perlin) + (interp [1] * perlin) + interp [0];
-				} else if (perlin >= mountainStart + transitionSize) { //Mountain
-					perlinMap [(i * w1) + j] = mountainScale * (perlin );
-					//perlinMap [(i * w1) + j] = (300 * perlin) + (300 * height) - (0.3f * 300);
-					//perlinMap [(i * w1) + j] = (-150 * height) + (10 * perlin);
-				}
-				*/
-
-				//(0.25, 0.04) -> (0.3231, 0.06923) -> (0.35, 0.15)
+				perlinMap [(i * w1) + j] = getHeightForCoordinate (worldX, worldY, i, j);
 			}
 		}
-
-		//TODO: apply a smooth/boost function to make the perlin map terrain more diverse.
-		//Specifically, 0-0.35 gets flattened, 0.35-0.6 gets a smooth slope, 0.6-0.8 is hilly, and 0.8-1.0 is mountainous.
 
 		int[] iw1 = new int[w1];
 
@@ -204,7 +79,7 @@ public class Generator : MonoBehaviour {
 		Vector2[] uvs = new Vector2[w1 * l1];
 		for (int i = 0; i < w1; i++) {
 			for (int j = 0; j < l1; j++) {
-				uvs [iw1[i] + j] = new Vector2 (j, i);
+				uvs [iw1[i] + j] = new Vector2 ((float)j / 128f, (float)i / 128f);
 			}
 		}
 		Profiler.EndSample();
@@ -240,9 +115,8 @@ public class Generator : MonoBehaviour {
 		mesh.triangles = triangles;
 		mesh.uv = uvs;
 
-		mesh.RecalculateNormals ();
+		//mesh.RecalculateNormals ();
 		//Manually calculate normals to get rid of seams
-		/*
 		Vector3[] normals = new Vector3[w1 * l1];
 		for (int i = 0; i < w1; i++) {
 			for (int j = 0; j < l1; j++) {
@@ -280,7 +154,6 @@ public class Generator : MonoBehaviour {
 			}
 		}
 		mesh.normals = normals;
-		*/
 
 		return mesh;
 	}
@@ -289,40 +162,10 @@ public class Generator : MonoBehaviour {
 	public static float getHeightForCoordinate(float worldX, float worldY, int i, int j) {
 		float adjustedScale = sizeScale * (meshDimension / 128.0f) / 128.0f;
 
-		float perlin = perlinOctaves (6, 0.5f, adjustedScale, worldX + ((float)j / meshDimension), worldY + ((float)i / meshDimension));
-		//float height = getHeightMapForCoordinate (worldX, worldY, i, j, adjustedScale);
+		float perlin = perlinOctaves (8, 0.5f, adjustedScale, worldX + ((float)j / meshDimension), worldY + ((float)i / meshDimension));
+		float heightOffset = -0.5f * heightScale;
 
-		//float val = perlin + height;
-
-		//float transitionSize = 0.05f;
-
-		return heightScale * perlin;
-
-		/*
-		if (val < -0.2f) {
-			return 150 * (val - (0.8f * perlin));
-		} else if (val >= -0.2f && height < -0.1f) {
-			return 70 * val;
-		} else if (val > -0.1f && height < 0.1f - transitionSize) {
-			return 10 * val;
-		} else if (val >= 0.1f - transitionSize && val < 0.1 + transitionSize) {
-			//Interpolate
-			float[] interp = Helper.interpolate (-0.05f, 0.05f, 0.15f, 10 * -0.05f, 10 * 0.05f, 40 * (0.15f - 0.1f));
-			return (interp [2] * val * val) + (interp [1] * val) + interp [0];
-		} else if (val >= 0.1f + transitionSize && val < 0.3f - transitionSize) {
-			return 40 * (val - 0.1f);
-		} else if (val >= 0.3f - transitionSize && val < 0.3f + transitionSize) {
-			//Interpolate. The last two points are the transition range; the first is back a distance equal to the transition distance.
-			//Pass in: x1 - (x2 - x1), x1, x2, f1(x1), f1(x2), f2(x3)
-			float[] interp = Helper.interpolate (0.15f, 0.25f, 0.35f, 40 * (0.15f - 0.1f), 40 * (0.25f - 0.1f), 300 * (0.35f - 0.3f));
-			return (interp [2] * val * val) + (interp [1] * val) + interp [0];
-		} else if (val >= 0.3f + transitionSize) {
-			return 300 * (val - 0.3f);
-		} else {
-			Debug.Log ("Found value that didn't meet cases: " + val);
-			return -1;
-		}
-		*/
+		return heightOffset + (heightScale * perlin);
 	}
 
 	public static IEnumerator generateTerrainBackground(float worldX, float worldY, GameObject unfinishedObject) {

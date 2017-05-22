@@ -201,7 +201,7 @@ public class Controller : MonoBehaviour {
 
 		if (Input.GetMouseButtonDown (0)) {
 			Ray ray = Camera.main.ScreenPointToRay(new Vector3(Screen.width / 2, Screen.height / 2));
-			RaycastHit destroyHit = new RaycastHit();
+			//RaycastHit destroyHit = new RaycastHit();
 
 			if (Physics.Raycast (ray.origin, ray.direction, out hit, Mathf.Infinity)) {
 				int index = hit.triangleIndex;
