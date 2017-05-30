@@ -12,16 +12,20 @@ public class Generator : MonoBehaviour {
 	public static float sizeScale = 128f;
 	public static float heightScale = 100f;
 
-	public static int renderDiameter = 5;
+	public static int renderDiameter = 1;
 	public static int renderRadius = renderDiameter / 2;
+
+	private static float uvScale = 2f;
 
 	//public static float[] boundaries = new float[]{ 0f, 0.1f, 0.3f, 0.5f };
 	//public static float transitionSize = 0.1f;
 
-	public static void generateLand(float xStart, float yStart) {
+	public static void generateLand(int xStart, int yStart) {
 		//TODO: Have multiple materials/textures and blend between them
-		Material material = Resources.Load ("Materials/Grass-Small", typeof(Material)) as Material;
-		material.color = new Color(1.0f, 0.855f, 0.725f);
+		Material material = Resources.Load ("Materials/Combined-Minecraft", typeof(Material)) as Material;
+		//material.color = new Color(1.0f, 0.855f, 0.725f);
+		//material.color = new Color(0.55f, 0.741f, 0.4f);
+		//material.color = new Color(0, 0, 0);
 
 		PhysicMaterial pmat = new PhysicMaterial ();
 		pmat.bounciness = 0f;
@@ -32,7 +36,7 @@ public class Generator : MonoBehaviour {
 			for (int i = -renderRadius; i <= renderRadius; i++) {
 				Mesh mesh = Generator.generateTerrain(xStart + i, yStart + j);
 				Vector3 position = new Vector3(i * meshDimension - (meshDimension / 2), 0, j * meshDimension - (meshDimension / 2));
-				Generator.createTerrainObject (mesh, position, material, pmat);
+				Generator.createTerrainObject (mesh, xStart + i, yStart + j, position, material, pmat);
 			}
 		}
 	}
@@ -54,14 +58,66 @@ public class Generator : MonoBehaviour {
 		//float[] heightMap = createHeightMap (width, length, worldX, worldY, adjustedScale);
 
 		//Generate a perlin noise map for the actual land itself. 
+		float max = 0;
 		float[] perlinMap = new float[w1 * l1];
 		for (int i = 0; i < w1; i++) {
 			for (int j = 0; j < l1; j++) {
 				perlinMap [(i * w1) + j] = getHeightForCoordinate (worldX, worldY, i, j);
+				if (perlinMap [(i * w1) + j] > max) {
+					max = perlinMap [(i * w1) + j];
+				}
 			}
 		}
+		Debug.Log ("Max for this generation: " + max);
+
+		Block newBlock = null;
+
+		/** 
+		 * Based on the generated height of the terrain, add some blocks to the data structure.
+		 * 
+		 * Specifically, we go through each 2x2 set of generated points (which correspond to the 
+		 * four corners of a "cube"), and calculate the volume of said cube with the base snapped 
+		 * to the nearest integer height. If this volume is less than a cube, we add one more to 
+		 * the base and consider that as the cube. 
+		 * 
+		 * The height is calculated by avg(points) - (int)(min(points)). Width and length is 1.
+		 */
+		for (int i = 0; i < width; i++) {
+			for (int j = 0; j < length; j++) {
+				float p1 = perlinMap [(i * w1) + j];
+				float p2 = perlinMap [(i * w1) + j + 1];
+				float p3 = perlinMap [((i + 1) * w1) + j];
+				float p4 = perlinMap [((i + 1) * w1) + j + 1];
+
+				float avg = (p1 + p2 + p3 + p4) / 4.0f;
+				int min = (int)(Mathf.Min (Mathf.Min (p1, p2), Mathf.Min (p3, p4)));
+				float volume = avg - min;
+
+				/*
+				if (volume < 1.0f) {
+					volume += 1.0f;
+					min -= 1;
+				}*/
+				newBlock = Block.add ((int)((worldX * meshDimension) + i), (int)((worldY * meshDimension) + j), min);
+				newBlock.volume = volume;
+				newBlock.blockID = Random.Range (0, 2) == 0 ? BlockType.GRASS : BlockType.SAND;
+
+				//if (i > width - 10 && j < 10) {
+					//Debug.Log (p1 + ", " + p2 + ", " + p3 + ", " + p4);
+					//Debug.Log ("Adding block at " + (int)((worldX * meshDimension) + i) + ", " + (int)((worldY * meshDimension) + j) + ", " + min + ". Avg: " + avg);
+				//}
+			}
+		}
+		//Debug.Log ("Recording: " + Block.count () + " blocks.");
+
+
 
 		int[] iw1 = new int[w1];
+
+		/* 
+		 * TODO: To properly support texturing each tile, we need to have 4 vertices per tile. As of right now,
+		 * vertices are shared. Triangle count is unaffected.
+		 */
 
 		//Vertex generation
 		Profiler.BeginSample("Vertex generation");
@@ -77,9 +133,9 @@ public class Generator : MonoBehaviour {
 		//UV mapping generation
 		Profiler.BeginSample("UV generation");
 		Vector2[] uvs = new Vector2[w1 * l1];
-		for (int i = 0; i < w1; i++) {
-			for (int j = 0; j < l1; j++) {
-				uvs [iw1[i] + j] = new Vector2 ((float)j / 128f, (float)i / 128f);
+		for (int i = 0; i < w1 - 1; i++) {
+			for (int j = 0; j < l1 - 1; j++) {
+				uvs [iw1[i] + j] = new Vector2 ((float)j / uvScale, (float)i / uvScale);
 			}
 		}
 		Profiler.EndSample();
@@ -165,7 +221,7 @@ public class Generator : MonoBehaviour {
 		float perlin = perlinOctaves (8, 0.5f, adjustedScale, worldX + ((float)j / meshDimension), worldY + ((float)i / meshDimension));
 		float heightOffset = -0.5f * heightScale;
 
-		return heightOffset + (heightScale * perlin);
+		return (heightOffset + (heightScale * perlin));
 	}
 
 	public static IEnumerator generateTerrainBackground(float worldX, float worldY, GameObject unfinishedObject) {
@@ -325,16 +381,19 @@ public class Generator : MonoBehaviour {
 		return value / sumAmps;
 	}
 
-	public static GameObject createTerrainObject(Mesh mesh, Vector3 position, Material material, PhysicMaterial pmat) {
+	public static GameObject createTerrainObject(Mesh mesh, int x, int y, Vector3 position, Material material, PhysicMaterial pmat) {
 		GameObject obj = new GameObject ();
 
 		obj.AddComponent<MeshFilter> ();
 		obj.AddComponent<MeshRenderer> ();
 		obj.AddComponent<MeshCollider> ();
+		obj.AddComponent<ChunkData> ();
 
 		obj.GetComponent<MeshFilter> ().mesh = mesh;
 		obj.GetComponent<MeshRenderer> ().material = material;
 		obj.GetComponent<MeshCollider> ().material = pmat;
+		obj.GetComponent<ChunkData> ().worldX = x;
+		obj.GetComponent<ChunkData> ().worldY = y;
 
 		/* TODO: create simplified compound collider with boxcolliders */
 		obj.GetComponent<MeshCollider>().sharedMesh = mesh; 
@@ -343,6 +402,7 @@ public class Generator : MonoBehaviour {
 		return obj;
 	}
 
+	/*
 	public static GameObject createTerrainObject(Mesh mesh, Vector3 position) {				
 		Material material = Resources.Load ("Materials/Grass", typeof(Material)) as Material;
 
@@ -352,7 +412,7 @@ public class Generator : MonoBehaviour {
 		pmat.staticFriction = 0.7f;
 
 		return createTerrainObject (mesh, position, material, pmat);
-	}
+	}*/
 
 	public static Mesh createMesh(Vector3[] vertices, Vector2[] uvs, int[] triangles) {
 		return createMesh (null, vertices, uvs, triangles);

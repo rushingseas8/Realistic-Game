@@ -204,26 +204,66 @@ public class Controller : MonoBehaviour {
 			//RaycastHit destroyHit = new RaycastHit();
 
 			if (Physics.Raycast (ray.origin, ray.direction, out hit, Mathf.Infinity)) {
-				int index = hit.triangleIndex;
-				if (index != -1) {
-					MeshCollider mc = hit.collider as MeshCollider;
-					Mesh mesh = mc.sharedMesh;
 
-					Vector3[] vertices = mesh.vertices;
-					int[] triangles = mesh.triangles;
+				//Pull the data from the mesh we hit. If it doesn't exist, we didn't hit a terrain chunk.
+				ChunkData chunkData = hit.collider.gameObject.GetComponent<ChunkData> ();
 
-					Transform hitTransform = hit.collider.transform;
+				if (chunkData != null) {
+					int baseX = chunkData.worldX * Generator.meshDimension;
+					int baseY = chunkData.worldY * Generator.meshDimension;
 
-					Vector3[] points = new Vector3[6];
-					//int offset = index % 2 == 0 ? 0 : -3;
-					for (int i = 0; i < 3; i++) {
-						points [i] = vertices [triangles [index * 3 + i + 0]];
-						//points [i] = hitTransform.TransformPoint (points [i]);
-						points [i] = new Vector3 (points [i].x, points [i].y - 1.0f, points [i].z);
-						vertices [triangles [index * 3 + i + 0]] = points [i];
+					//Debug.Log ("Hit at world point: " + hit.point);
+
+					int index = hit.triangleIndex;
+					if (index != -1) {
+						MeshCollider mc = hit.collider as MeshCollider;
+						Mesh mesh = mc.sharedMesh;
+
+						Vector3[] vertices = mesh.vertices;
+						int[] triangles = mesh.triangles;
+
+						Transform hitTransform = hit.collider.transform;
+
+						//This extracts the triangle we hit.
+						Vector3[] points = new Vector3[3];
+						//int offset = index % 2 == 0 ? 0 : -3;
+						for (int i = 0; i < 3; i++) {
+							points [i] = vertices [triangles [(index * 3) + i]];
+							//points [i] = hitTransform.TransformPoint (points [i]);
+							//points [i] = new Vector3 (points [i].x, points [i].y - 1.0f, points [i].z);
+							//vertices [triangles [index * 3 + i + 0]] = points [i];
+						}
+						//mesh.vertices = vertices;
+						//mc.sharedMesh = mesh;
+
+						//Grab the bottom-left point. We do this so we consistently get the same point on the square.
+						//Technically, we can use either the bottom-left or top-right points.
+						Vector3 minPt = points[0];
+						for (int i = 0; i < 3; i++) {
+							if (points [i].x < minPt.x)
+								minPt.x = points [i].x;
+							if (points [i].z < minPt.z)
+								minPt.z = points [i].z;
+						}
+
+						//List<Block> blocks = Block.get (baseX + minPt.z, baseY + minPt.x);
+						//foreach (Block b in blocks) {
+						//	Debug.Log ("Found a block at the x,y position with z=" + b.z);
+						//}
+						Block data = Block.get (baseX + minPt.z, baseY + minPt.x, hit.point.y);
+						//Debug.Log ("Checking if block exists at x=" + (baseX + minPt.z) + " y=" + (baseY + minPt.x) + " z=" + hit.point.y + ". " + (data != null ? data.ToString() : "Null."));
+						if (data == null) {
+							data = Block.get (baseX + minPt.z, baseY + minPt.x, hit.point.y - 1);
+							//Debug.Log ("Checking if block exists at x=" + (baseX + minPt.z) + " y=" + (baseY + minPt.x) + " z=" + (hit.point.y - 1) + ". " + (data != null ? data.ToString() : "Null."));
+						}
+
+						if (data == null) {
+							Debug.LogError ("Expected to find block, but failed. Coords: (x=" + (baseX + minPt.z) + " y=" + (baseY + minPt.x) + " z=" + (hit.point.y) + ").");
+						}
+						//Debug.Log ("Triangle point: " + minPt.z + ", " + minPt.x + ", " + minPt.y);
+						//Debug.Log ("Checking if block exists at x=" + (baseX + minPt.z) + " y=" + (baseY + minPt.x) + " z=" + hit.point.y + ". " + (data != null ? data.ToString() : "Null."));
+
 					}
-					mesh.vertices = vertices;
-					mc.sharedMesh = mesh;
 				}
 
 

@@ -8,6 +8,7 @@ public class SunController : MonoBehaviour {
 	const float ratio = 3600f;
 
 	static float currentTimeOfDay = 0;
+	static float radius = 100f;
 
 	// Use this for initialization
 	void Start () {
@@ -27,9 +28,16 @@ public class SunController : MonoBehaviour {
 		Vector3 oldRotation = this.gameObject.transform.rotation.eulerAngles;
 
 		currentTimeOfDay = (Time.time * ratio);
-		float xRotation = 360f * currentTimeOfDay / SEC_IN_DAY;
-		Debug.Log (xRotation);
-		Vector3 newRotation = new Vector3 (xRotation, oldRotation.y, oldRotation.z);
-		this.gameObject.transform.rotation = Quaternion.Euler (newRotation);
+		//float xRotation = 360f * (currentTimeOfDay / SEC_IN_DAY);
+		//Debug.Log (xRotation);
+		//Vector3 newRotation = new Vector3 (xRotation, oldRotation.y, oldRotation.z);
+		//this.gameObject.transform.rotation = Quaternion.Euler (newRotation);
+
+
+		float xRotation = 360f * (currentTimeOfDay / SEC_IN_DAY);
+		Vector3 center = Camera.main.transform.position;
+
+		this.gameObject.transform.position = center + Quaternion.Euler (0, 0, xRotation) * (radius * Vector3.right);
+		this.gameObject.transform.LookAt (center);
 	}
 }
