@@ -7,7 +7,7 @@ public class Generator : MonoBehaviour {
 
 	public static Mesh[,] meshGrid;
 
-	public static int meshDimension = 32;
+	public static int meshDimension = 4;
 
 	public static float sizeScale = 128f;
 	public static float heightScale = 100f;
@@ -58,17 +58,18 @@ public class Generator : MonoBehaviour {
 		//float[] heightMap = createHeightMap (width, length, worldX, worldY, adjustedScale);
 
 		//Generate a perlin noise map for the actual land itself. 
-		float max = 0;
+		//float max = 0;
 		float[] perlinMap = new float[w1 * l1];
 		for (int i = 0; i < w1; i++) {
 			for (int j = 0; j < l1; j++) {
 				perlinMap [(i * w1) + j] = getHeightForCoordinate (worldX, worldY, i, j);
-				if (perlinMap [(i * w1) + j] > max) {
-					max = perlinMap [(i * w1) + j];
-				}
+				//if (perlinMap [(i * w1) + j] > max) {
+				//	max = perlinMap [(i * w1) + j];
+				//}
+				//Debug.Log(perlinMap [(i * w1) + j]);
 			}
 		}
-		Debug.Log ("Max for this generation: " + max);
+		//Debug.Log ("Max for this generation: " + max);
 
 		Block newBlock = null;
 
@@ -111,7 +112,7 @@ public class Generator : MonoBehaviour {
 		//Debug.Log ("Recording: " + Block.count () + " blocks.");
 
 
-
+		int[] iw = new int[width];
 		int[] iw1 = new int[w1];
 
 		/* 
@@ -121,27 +122,62 @@ public class Generator : MonoBehaviour {
 
 		//Vertex generation
 		Profiler.BeginSample("Vertex generation");
-		Vector3[] vertices = new Vector3[w1 * l1];
-		for (int i = 0; i < w1; i++) {
+		Vector3[] vertices = new Vector3[4 * width * length];
+		/*
+		for (int i = 0; i < width; i++) {
+			iw [i] = i * width;
 			iw1[i] = i * w1;
-			for (int j = 0; j < l1; j++) {
-				vertices [iw1[i] + j] = new Vector3 (j, perlinMap[(i * w1) + j], i);
+			for (int j = 0; j < length; j++) {
+				vertices [(4 * (iw[i] + j)) + 0] = new Vector3 (j, perlinMap[(i * w1) + j], i);
+				vertices [(4 * (iw[i] + j)) + 1] = new Vector3 (j + 1, perlinMap[(i * w1) + j + 1], i);
+				vertices [(4 * (iw[i] + j)) + 2] = new Vector3 (j, perlinMap[((i + 1) * w1) + j], i + 1);
+				vertices [(4 * (iw[i] + j)) + 3] = new Vector3 (j + 1, perlinMap[((i + 1) * w1) + j + 1], i + 1);
+			}
+		}*/
+
+		Vector3[,,] verticesUnpacked = new Vector3[width, length, 4];
+		for (int i = 0; i < width; i++) {
+			iw [i] = i * width;
+			iw1[i] = i * w1;
+			for (int j = 0; j < length; j++) {
+				verticesUnpacked[i,j,0] = new Vector3(j, perlinMap[(i * w1) + j], i);
+				verticesUnpacked[i,j,1] = new Vector3 (j + 1, perlinMap[(i * w1) + j + 1], i);
+				verticesUnpacked[i,j,2] = new Vector3 (j, perlinMap[((i + 1) * w1) + j], i + 1);
+				verticesUnpacked[i,j,3] = new Vector3 (j + 1, perlinMap[((i + 1) * w1) + j + 1], i + 1);
 			}
 		}
+
+		for (int i = 0; i < width; i++) {
+			for (int j = 0; j < length; j++) {
+				for (int k = 0; k < 4; k++) {
+					Debug.Log ("[" + ((4 * ((i * width) + j)) + k) + "]: " + verticesUnpacked [i, j, k]);
+					vertices [(4 * ((i * width) + j)) + k] = verticesUnpacked [i, j, k];
+				}
+			}
+		}
+
 		Profiler.EndSample();
 
 		//UV mapping generation
 		Profiler.BeginSample("UV generation");
-		Vector2[] uvs = new Vector2[w1 * l1];
-		for (int i = 0; i < w1 - 1; i++) {
-			for (int j = 0; j < l1 - 1; j++) {
-				uvs [iw1[i] + j] = new Vector2 ((float)j / uvScale, (float)i / uvScale);
+		Vector2[] uvs = new Vector2[4 * width * length];
+		for (int i = 0; i < width; i++) {
+			for (int j = 0; j < length; j++) {
+				//uvs [iw1[i] + j] = new Vector2 ((float)j / uvScale, (float)i / uvScale);
+
+				if (newBlock.blockID == BlockType.GRASS) {
+					uvs [(4 * (iw[i] + j)) + 0] = new Vector2 ((float)j / uvScale, (float)i / uvScale);
+					uvs [(4 * (iw[i] + j)) + 1] = new Vector2 ((float)(j + 1) / uvScale, (float)i / uvScale);
+					uvs [(4 * (iw[i] + j)) + 2] = new Vector2 ((float)j / uvScale, (float)(i + 1) / uvScale);
+					uvs [(4 * (iw[i] + j)) + 3] = new Vector2 ((float)(j + 1) / uvScale, (float)(i + 1) / uvScale);
+				}
 			}
 		}
 		Profiler.EndSample();
 
 		//Triangle generation
 		Profiler.BeginSample("Triangle generation");
+		/*
 		int[] triangles = new int[(int)(6 * width * length)];
 		for (int i = 0; i < width; i++) {
 			int i1 = i + 1;
@@ -163,6 +199,29 @@ public class Generator : MonoBehaviour {
 				triangles [baseIndex + 5] = i1wd1j + 1;
 			}
 		}
+
+		for (int i = 0; i < triangles.Length; i++) {
+			Debug.Log ("[" + i + "]:" + triangles [i]);
+		}
+		*/
+
+		int[] triangles = new int[(int)(6 * width * length)];
+		for (int i = 0; i < width; i++) {
+			for (int j = 0; j < length; j++) {
+				int baseIndex = 6 * ((i * width) + j);
+
+				//0, 3, 1
+				//0, 2, 3
+				triangles[baseIndex + 0] = iw[i] + j + 0;
+				triangles[baseIndex + 1] = iw[i] + j + 3;
+				triangles[baseIndex + 2] = iw[i] + j + 1;
+
+				triangles[baseIndex + 3] = iw[i] + j + 0;
+				triangles[baseIndex + 4] = iw[i] + j + 2;
+				triangles[baseIndex + 5] = iw[i] + j + 3;
+			}
+		}
+
 		Profiler.EndSample ();
 
 		Mesh mesh = new Mesh ();
@@ -171,8 +230,9 @@ public class Generator : MonoBehaviour {
 		mesh.triangles = triangles;
 		mesh.uv = uvs;
 
-		//mesh.RecalculateNormals ();
+		mesh.RecalculateNormals ();
 		//Manually calculate normals to get rid of seams
+		/*
 		Vector3[] normals = new Vector3[w1 * l1];
 		for (int i = 0; i < w1; i++) {
 			for (int j = 0; j < l1; j++) {
@@ -210,6 +270,7 @@ public class Generator : MonoBehaviour {
 			}
 		}
 		mesh.normals = normals;
+		*/
 
 		return mesh;
 	}
